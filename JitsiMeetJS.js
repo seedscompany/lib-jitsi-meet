@@ -577,6 +577,9 @@ export default _mergeNamespaceAndModule({
     util: {
         AuthUtil,
         ScriptUtil,
-        browser
+        browser,
+        /* FIXME 独自追加 */
+        RTC,
     }
+
 });
