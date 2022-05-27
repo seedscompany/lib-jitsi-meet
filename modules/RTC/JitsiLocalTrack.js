@@ -929,3 +929,6 @@ export default class JitsiLocalTrack extends JitsiTrack {
         return this._queueSetMuted(false);
     }
 }
+
+// globalに出す
+window.JitsiLocalTrack = JitsiLocalTrack;
