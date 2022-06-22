@@ -3,7 +3,7 @@
 import clonedeep from 'lodash.clonedeep';
 import transform from 'sdp-transform';
 
-import MediaDirection from '../../service/RTC/MediaDirection';
+import { MediaDirection } from '../../service/RTC/MediaDirection';
 import browser from '../browser';
 import FeatureFlags from '../flags/FeatureFlags';
 
@@ -707,7 +707,7 @@ SDP.prototype.jingle2media = function(content) {
                                 + parameter.getAttribute('value'));
                     })
                     .get()
-                    .join('; ');
+                    .join(';');
             sdp += '\r\n';
         }
 
