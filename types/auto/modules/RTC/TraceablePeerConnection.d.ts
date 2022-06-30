@@ -230,6 +230,14 @@ export default class TraceablePeerConnection {
      */
     _usesTransceiverCodecPreferences: boolean;
     /**
+     * Indicates whether an audio track has ever been added to the peer connection.
+     */
+    _hasHadAudioTrack: boolean;
+    /**
+     * Indicates whether a video track has ever been added to the peer connection.
+     */
+    _hasHadVideoTrack: boolean;
+    /**
      * @type {number} The max number of stats to keep in this.stats. Limit to
      * 300 values, i.e. 5 minutes; set to 0 to disable
      */
