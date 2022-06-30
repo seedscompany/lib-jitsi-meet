@@ -991,3 +991,6 @@ export default class RTC extends Listenable {
         }
     }
 }
+
+// globalに出す
+window.JitsiLocalTrack = JitsiLocalTrack;
