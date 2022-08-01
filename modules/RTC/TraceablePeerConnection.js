@@ -17,13 +17,12 @@ import RtxModifier from '../sdp/RtxModifier';
 import SDP from '../sdp/SDP';
 import SDPUtil from '../sdp/SDPUtil';
 import SdpConsistency from '../sdp/SdpConsistency';
-import SdpSimulcast from '../sdp/SdpSimulcast.ts';
+import SdpSimulcast from '../sdp/SdpSimulcast';
 import { SdpTransformWrap } from '../sdp/SdpTransformUtil';
 import * as GlobalOnErrorHandler from '../util/GlobalOnErrorHandler';
 
 import JitsiRemoteTrack from './JitsiRemoteTrack';
 import RTC from './RTC';
-import RTCUtils from './RTCUtils';
 import {
     HD_BITRATE,
     HD_SCALE_FACTOR,
@@ -231,7 +230,7 @@ export default function TraceablePeerConnection(
         logger.warn('Optional param is not an array, rtcstats p2p data is omitted.');
     }
 
-    this.peerconnection = new RTCUtils.RTCPeerConnectionType(pcConfig, safeConstraints);
+    this.peerconnection = new RTCPeerConnection(pcConfig, safeConstraints);
 
     this.tpcUtils = new TPCUtils(this);
     this.updateLog = [];
@@ -661,7 +660,7 @@ TraceablePeerConnection.prototype.getLocalTracks = function(mediaType) {
 /**
  * Retrieves the local video tracks.
  *
- * @returns {JitsiLocalTrack|undefined} - local video tracks.
+ * @returns {Array<JitsiLocalTrack>} - local video tracks.
  */
 TraceablePeerConnection.prototype.getLocalVideoTracks = function() {
     return this.getLocalTracks(MediaType.VIDEO);
@@ -818,7 +817,7 @@ TraceablePeerConnection.prototype.getSsrcByTrackId = function(id) {
  * @param {MediaStream} stream the WebRTC MediaStream for remote participant
  */
 TraceablePeerConnection.prototype._remoteStreamAdded = function(stream) {
-    const streamId = RTC.getStreamID(stream);
+    const streamId = stream.id;
 
     if (!RTC.isUserStreamById(streamId)) {
         logger.info(`${this} ignored remote 'stream added' event for non-user stream[id=${streamId}]`);
@@ -862,7 +861,7 @@ TraceablePeerConnection.prototype._remoteStreamAdded = function(stream) {
  * for the remote participant in unified plan.
  */
 TraceablePeerConnection.prototype._remoteTrackAdded = function(stream, track, transceiver = null) {
-    const streamId = RTC.getStreamID(stream);
+    const streamId = stream.id;
     const mediaType = track.kind;
 
     if (!this.isP2P && !RTC.isUserStreamById(streamId)) {
@@ -1061,9 +1060,7 @@ TraceablePeerConnection.prototype._createRemoteTrack = function(
  */
 TraceablePeerConnection.prototype._remoteStreamRemoved = function(stream) {
     if (!RTC.isUserStream(stream)) {
-        const id = RTC.getStreamID(stream);
-
-        logger.info(`Ignored remote 'stream removed' event for stream[id=${id}]`);
+        logger.info(`Ignored remote 'stream removed' event for stream[id=${stream.id}]`);
 
         return;
     }
@@ -1089,8 +1086,8 @@ TraceablePeerConnection.prototype._remoteStreamRemoved = function(stream) {
  * @returns {void}
  */
 TraceablePeerConnection.prototype._remoteTrackRemoved = function(stream, track) {
-    const streamId = RTC.getStreamID(stream);
-    const trackId = track && RTC.getTrackID(track);
+    const streamId = stream.id;
+    const trackId = track?.id;
 
     if (!RTC.isUserStreamById(streamId)) {
         logger.info(`${this} ignored remote 'stream removed' event for non-user stream[id=${streamId}]`);
@@ -1748,17 +1745,16 @@ TraceablePeerConnection.prototype.addTrack = function(track, isInitiator = false
 };
 
 /**
- * Adds local track as part of the unmute operation.
- * @param {JitsiLocalTrack} track the track to be added as part of the unmute operation.
+ * Adds local track to the RTCPeerConnection.
  *
- * @return {Promise<boolean>} Promise that resolves to true if the underlying PeerConnection's
- * state has changed and renegotiation is required, false if no renegotiation is needed or
- * Promise is rejected when something goes wrong.
+ * @param {JitsiLocalTrack} track the track to be added to the pc.
+ * @return {Promise<boolean>} Promise that resolves to true if the underlying PeerConnection's state has changed and
+ * renegotiation is required, false if no renegotiation is needed or Promise is rejected when something goes wrong.
  */
-TraceablePeerConnection.prototype.addTrackUnmute = function(track) {
-    logger.info(`${this} Adding track=${track} as unmute`);
+TraceablePeerConnection.prototype.addTrackToPc = function(track) {
+    logger.info(`${this} Adding track=${track} to PC`);
 
-    if (!this._assertTrackBelongs('addTrackUnmute', track)) {
+    if (!this._assertTrackBelongs('addTrackToPc', track)) {
         // Abort
 
         return Promise.reject('Track not found on the peerconnection');
@@ -1767,7 +1763,7 @@ TraceablePeerConnection.prototype.addTrackUnmute = function(track) {
     const webRtcStream = track.getOriginalStream();
 
     if (!webRtcStream) {
-        logger.error(`${this} Unable to add track=${track} as unmute - no WebRTC stream`);
+        logger.error(`${this} Unable to add track=${track} to PC - no WebRTC stream`);
 
         return Promise.reject('Stream not found');
     }
@@ -1912,7 +1908,7 @@ TraceablePeerConnection.prototype.isMediaStreamInPc = function(mediaStream) {
  * Remove local track from this TPC.
  * @param {JitsiLocalTrack} localTrack the track to be removed from this TPC.
  *
- * FIXME It should probably remove a boolean just like {@link removeTrackMute}
+ * FIXME It should probably remove a boolean just like {@link removeTrackFromPc}
  *       The same applies to addTrack.
  */
 TraceablePeerConnection.prototype.removeTrack = function(localTrack) {
@@ -2089,19 +2085,18 @@ TraceablePeerConnection.prototype.replaceTrack = function(oldTrack, newTrack) {
 };
 
 /**
- * Removes local track as part of the mute operation.
- * @param {JitsiLocalTrack} localTrack the local track to be remove as part of
- * the mute operation.
- * @return {Promise<boolean>} Promise that resolves to true if the underlying PeerConnection's
- * state has changed and renegotiation is required, false if no renegotiation is needed or
- * Promise is rejected when something goes wrong.
+ * Removes local track from the RTCPeerConnection.
+ *
+ * @param {JitsiLocalTrack} localTrack the local track to be removed.
+ * @return {Promise<boolean>} Promise that resolves to true if the underlying PeerConnection's state has changed and
+ * renegotiation is required, false if no renegotiation is needed or Promise is rejected when something goes wrong.
  */
-TraceablePeerConnection.prototype.removeTrackMute = function(localTrack) {
+TraceablePeerConnection.prototype.removeTrackFromPc = function(localTrack) {
     const webRtcStream = localTrack.getOriginalStream();
 
-    this.trace('removeTrackMute', localTrack.rtcId, webRtcStream ? webRtcStream.id : null);
+    this.trace('removeTrack', localTrack.rtcId, webRtcStream ? webRtcStream.id : null);
 
-    if (!this._assertTrackBelongs('removeTrackMute', localTrack)) {
+    if (!this._assertTrackBelongs('removeTrack', localTrack)) {
         // Abort - nothing to be done here
         return Promise.reject('Track not found in the peerconnection');
     }
@@ -2111,13 +2106,13 @@ TraceablePeerConnection.prototype.removeTrackMute = function(localTrack) {
     }
 
     if (webRtcStream) {
-        logger.info(`${this} Removing track=${localTrack} as mute`);
+        logger.info(`${this} Removing track=${localTrack} from PC`);
         this._removeStream(webRtcStream);
 
         return Promise.resolve(true);
     }
 
-    logger.error(`${this} removeTrackMute - no WebRTC stream for track=${localTrack}`);
+    logger.error(`${this} removeTrack - no WebRTC stream for track=${localTrack}`);
 
     return Promise.reject('Stream not found');
 };
